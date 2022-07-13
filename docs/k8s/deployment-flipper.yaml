@@ -1,0 +1,15 @@
+apiVersion: "deployment-flipper.io/v1"
+kind: DeploymentFlipper
+metadata:
+  name: my-flipper
+spec:
+  includeNamespaces:
+    - microservice-a
+    - microservice-b
+  excludeNamespaces:
+    - kube-system
+    - istio-system
+    - argocd
+    - prometheus
+    - grafana
+  image: hjcian/my-awesome-image
