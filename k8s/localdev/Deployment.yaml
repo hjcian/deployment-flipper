@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment-flipper.watch: "true"
+  name: deployment-flipper-demo
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: deployment-flipper-demo
+  template:
+    metadata:
+      labels:
+        app: deployment-flipper-demo
+    spec:
+      containers:
+        - name: deployment-flipper-demo
+          image: alpine:latest
+          command: ["ash", "-c", "--"]
+          args: ['while true; echo $(date) ":running"; do sleep 1; done;']
+          resources:
+            limits:
+              cpu: 100m
+              memory: 100Mi
