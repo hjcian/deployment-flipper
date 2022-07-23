@@ -1,3 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: env-cm
+  namespace: default
+data:
+  key1: env-cm-value1
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: envfrom-cm
+  namespace: default
+data:
+  key1: envfrom-cm-value1
+  key2: envfrom-cm-value2
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: env-sc
+  namespace: default
+stringData:
+  key1: env-sc-value1
+type: Opaque
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,8 +44,25 @@ spec:
         - name: deployment-flipper-demo
           image: alpine:latest
           command: ["ash", "-c", "--"]
-          args: ['while true; echo $(date) ":running"; do sleep 1; done;']
+          args:
+            [
+              'while true; echo "cm-env=$(env-cm) cm-enffrom1=$key1 cm-enffrom2=$key2 cm-enffrom3=$key3"; do sleep 1; done;',
+            ]
           resources:
             limits:
               cpu: 100m
               memory: 100Mi
+          env:
+            - name: env-cm
+              valueFrom:
+                configMapKeyRef:
+                  name: env-cm
+                  key: key1
+            - name: env-sc
+              valueFrom:
+                secretKeyRef:
+                  name: env-sc
+                  key: key1
+          envFrom:
+            - configMapRef:
+                name: envfrom-cm
