@@ -3,13 +3,18 @@ kind: DeploymentFlipper
 metadata:
   name: my-flipper
 spec:
-  includeNamespaces:
-    - microservice-a
-    - microservice-b
-  excludeNamespaces:
-    - kube-system
-    - istio-system
-    - argocd
-    - prometheus
-    - grafana
+  intervalSeconds: 60
+  logLevel: info
+  include:
+    namespaces:
+      - microservice-a
+      - microservice-b
+  exclude:
+    namespaces:
+      - kube-system
+      - istio-system
+      - argocd
+      - prometheus
+      - grafana
+    enableDefaults: false
   image: hjcian/my-awesome-image
