@@ -1,11 +1,22 @@
-GO_CMD=go
-
+GOENV=CGO_ENABLED=0 GOFLAGS="-count=1"
+GOCMD=$(GOENV) go
+GOTEST=$(GOCMD) test -covermode=atomic -coverprofile=./coverage.out -timeout=20m
 
 rundev:
-	air -c cmd/localdev/.air.toml
-# $(GO_CMD) run cmd/localdev/main.go
+	@air -c cmd/localdev/.air.toml
+
 tidy:
-	go mod tidy
+	@go mod tidy
+
+target=""
+test:
+	$(GOTEST) -v ./... -run=${target}
+
+see-coverage:
+	@go tool cover -html=coverage.out
+
+ci-local-test: test
+	@go tool cover -func ./coverage.out
 
 KC?=kubectl
 
