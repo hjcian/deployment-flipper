@@ -7,6 +7,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
+const (
+	_k8S_Deploy_Cond_Reason_NewRSAvailableReason = "NewReplicaSetAvailable"
+)
+
 func checkStableAndGetLatestUpdatedTime(deploy *appsv1.Deployment) (time.Time, bool) {
 	var available bool
 	var availableLastUpdateTime time.Time
@@ -17,7 +21,9 @@ func checkStableAndGetLatestUpdatedTime(deploy *appsv1.Deployment) (time.Time, b
 			available = true
 			availableLastUpdateTime = cond.LastUpdateTime.Time
 		}
-		if cond.Type == appsv1.DeploymentProgressing && cond.Status == corev1.ConditionTrue && cond.Reason == _NewRSAvailableReason {
+		if cond.Type == appsv1.DeploymentProgressing &&
+			cond.Status == corev1.ConditionTrue &&
+			cond.Reason == _k8S_Deploy_Cond_Reason_NewRSAvailableReason {
 			processing = true
 			processingLastUpdateTime = cond.LastUpdateTime.Time
 		}

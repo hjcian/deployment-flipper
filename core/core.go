@@ -10,15 +10,6 @@ import (
 
 type empty struct{}
 
-const (
-	_AnnotationKey_watch         = "deployment-flipper.watch"
-	_ConfigurationType_ConfigMap = "configmap"
-	_ConfigurationType_Secret    = "secret"
-
-	_NativeDeploymentAnnotation_RestartedAt = "kubectl.kubernetes.io/restartedAt"
-	_NewRSAvailableReason                   = "NewReplicaSetAvailable"
-)
-
 type Controller struct {
 	logger *zap.Logger
 	repo   KubeRepo

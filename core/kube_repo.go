@@ -12,6 +12,16 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+const (
+	_ConfigurationType_ConfigMap = "configmap"
+	_ConfigurationType_Secret    = "secret"
+
+	_K8S_Annotation_LastAppliedConfig = "kubectl.kubernetes.io/last-applied-configuration"
+	_K8S_Annotation_RestartedAt       = "kubectl.kubernetes.io/restartedAt"
+
+	_DeployFlipper_Annotation_watch = "deployment-flipper.watch"
+)
+
 type KubeRepo interface {
 	ListWatchedDeploys(ns string) ([]*appsv1.Deployment, error)
 	GetConfigMapLatestUpdatedTime(name string, ns string) (time.Time, error)
@@ -36,7 +46,7 @@ func (k *kubeRepo) ListWatchedDeploys(ns string) ([]*appsv1.Deployment, error) {
 
 	deploys := make([]*appsv1.Deployment, 0)
 	for _, deploy := range deployments.Items {
-		if metav1.HasAnnotation(deploy.ObjectMeta, _AnnotationKey_watch) {
+		if metav1.HasAnnotation(deploy.ObjectMeta, _DeployFlipper_Annotation_watch) {
 			deploys = append(deploys, &deploy)
 		}
 	}
@@ -49,7 +59,7 @@ func (k *kubeRepo) GetConfigMapLatestUpdatedTime(name string, ns string) (time.T
 		return time.Time{}, err
 	}
 
-	currentApplied, ok := cm.GetAnnotations()["kubectl.kubernetes.io/last-applied-configuration"]
+	currentApplied, ok := cm.GetAnnotations()[_K8S_Annotation_LastAppliedConfig]
 	if !ok {
 		return time.Time{}, errors.New("last applied configmap not found")
 	}
@@ -67,7 +77,7 @@ func (k *kubeRepo) GetSecretLatestUpdatedTime(name string, ns string) (time.Time
 		return time.Time{}, err
 	}
 
-	currentApplied, ok := sc.GetAnnotations()["kubectl.kubernetes.io/last-applied-configuration"]
+	currentApplied, ok := sc.GetAnnotations()[_K8S_Annotation_LastAppliedConfig]
 	if !ok {
 		return time.Time{}, errors.New("last applied secret not found")
 	}
@@ -96,9 +106,9 @@ func (k *kubeRepo) RolloutRestartDeployment(name string, ns string) error {
 				}
 			}
 		}`,
-			_NativeDeploymentAnnotation_RestartedAt, time.Now().Format(time.RFC3339))),
+			_K8S_Annotation_RestartedAt, time.Now().Format(time.RFC3339))),
 		metav1.PatchOptions{})
-	// fmt.Println("patched time:", result.Spec.Template.GetAnnotations()[_NativeDeploymentAnnotation_RestartedAt])
+	// fmt.Println("patched time:", result.Spec.Template.GetAnnotations()[_K8S_Annotation_RestartedAt])
 	return err
 }
 
