@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"go.uber.org/zap"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -24,13 +25,8 @@ const (
 	_NewRSAvailableReason                   = "NewReplicaSetAvailable"
 )
 
-func LogClusterError(msg string, err error) {
-	if err != nil {
-		panic(fmt.Sprintf("[cluster] fail to %s: %v", msg, err))
-	}
-}
-
 type Controller struct {
+	logger    *zap.Logger
 	clientset *kubernetes.Clientset
 	store     ConfigStore
 }
@@ -114,7 +110,7 @@ func (c *Controller) GetSecretLatestUpdatedTime(name string, ns string) (time.Ti
 }
 
 func (c *Controller) RolloutRestartDeployment(name string, ns string) error {
-	result, err := c.clientset.AppsV1().Deployments(ns).Patch(
+	_, err := c.clientset.AppsV1().Deployments(ns).Patch(
 		context.Background(),
 		name,
 		types.StrategicMergePatchType,
@@ -132,12 +128,8 @@ func (c *Controller) RolloutRestartDeployment(name string, ns string) error {
 		}`,
 			_NativeDeploymentAnnotation_RestartedAt, time.Now().Format(time.RFC3339))),
 		metav1.PatchOptions{})
-	if err != nil {
-		return err
-	}
-
-	fmt.Println("patched time:", result.Spec.Template.GetAnnotations()[_NativeDeploymentAnnotation_RestartedAt])
-	return nil
+	// fmt.Println("patched time:", result.Spec.Template.GetAnnotations()[_NativeDeploymentAnnotation_RestartedAt])
+	return err
 }
 
 func checkStableAndGetLatestUpdatedTime(deploy *appsv1.Deployment) (time.Time, bool) {
@@ -199,7 +191,10 @@ func listReferencedConfigurations(deploy *appsv1.Deployment) (map[string]empty, 
 func (c *Controller) Do() {
 	ns := "default"
 	deploys, err := c.ListWatchedDeploys(ns)
-	LogClusterError("get deployment in "+ns, err)
+	if err != nil {
+		c.logger.Error("list watched deploys error:", zap.Error(err))
+		return
+	}
 
 	stableDeploys := make(map[*appsv1.Deployment]time.Time, 0)
 	for _, deploy := range deploys {
@@ -209,14 +204,29 @@ func (c *Controller) Do() {
 	}
 	var restart bool
 	for deploy, deployTime := range stableDeploys {
-		fmt.Println("deployment:", deploy.Name, "lastUpdateTime:", deployTime)
+		logger := c.logger.With(
+			zap.String("ns", ns),
+			zap.String("deploy_name", deploy.Name),
+			zap.Time("deploy_time", deployTime),
+		)
+		logger.Info("found stable watched deploy")
+
 		configMapNames, secretNames := listReferencedConfigurations(deploy)
 		if len(configMapNames) > 0 {
 			for name := range configMapNames {
 				configMapTime, err := c.GetConfigMapLatestUpdatedTime(name, ns)
-				LogClusterError("get configmap "+name, err)
+				if err != nil {
+					logger.Error("get updated time error:",
+						zap.String("config_name", name),
+						zap.Error(err))
+					continue
+				}
+
 				if configMapTime.After(deployTime) {
-					fmt.Println("Found updated ConfigMap:", ns, name, configMapTime)
+					logger.Info("found updated ConfigMap:",
+						zap.String("config_name", name),
+						zap.Time("config_time", configMapTime),
+					)
 					restart = true
 				}
 			}
@@ -224,60 +234,50 @@ func (c *Controller) Do() {
 		if len(secretNames) > 0 {
 			for name := range secretNames {
 				secretTime, err := c.GetSecretLatestUpdatedTime(name, ns)
-				LogClusterError("get secret "+name, err)
+				if err != nil {
+					logger.Error("get updated time error:",
+						zap.String("secret_name", name),
+						zap.Error(err))
+					continue
+				}
+
 				if secretTime.After(deployTime) {
-					fmt.Println("Found updated Secret:", ns, name, secretTime)
+					logger.Info("found updated ConfigMap:",
+						zap.String("secret_name", name),
+						zap.Time("secret_time", secretTime),
+					)
 					restart = true
 				}
 			}
 		}
 		if restart {
 			if err := c.RolloutRestartDeployment(deploy.Name, ns); err != nil {
-				fmt.Println("failed to RolloutRestartDeployment:", err)
+				logger.Error("rollout restart deployment error:", zap.Error(err))
 			} else {
-				fmt.Println("Restarted Deployment:", deploy.Name)
+				logger.Info("deployment is restarted")
 			}
 		}
 	}
 }
 
 func Main(clientset *kubernetes.Clientset) {
-	controller := Controller{clientset, NewConfigStore()}
+	logger, _ := zap.NewDevelopment()
+	controller := Controller{
+		logger,
+		clientset,
+		NewConfigStore(),
+	}
 	for {
 		// Core logic:
 		// 1. Get all namespace names
 		// 	1.1 filter out namespaces with given include/exclude options
 		// 2. Get all Deployment in that namespaces
-		controller.Do()
-
 		// 3. Get all referenced Secrets/ConfigMaps in each Deployment
 		// 4. Compare updated time on Deployment and Secrets/ConfigMaps
 		// 5. Restart the Deployment if its updated time is older than its referenced Secrets/ConfigMaps
+		controller.Do()
 
-		// pods, err := clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
-		// if err != nil {
-		// 	panic(err.Error())
-		// }
-		// fmt.Printf("There are %d pods in the cluster\n", len(pods.Items))
-
-		// // Examples for error handling:
-		// // - Use helper functions like e.g. errors.IsNotFound()
-		// // - And/or cast to StatusError and use its properties like e.g. ErrStatus.Message
-		// namespace := "default"
-		// pod := "example-xxxxx"
-		// _, err = clientset.CoreV1().Pods(namespace).Get(context.TODO(), pod, metav1.GetOptions{})
-		// if errors.IsNotFound(err) {
-		// 	fmt.Printf("Pod %s in namespace %s not found\n", pod, namespace)
-		// } else if statusError, isStatus := err.(*errors.StatusError); isStatus {
-		// 	fmt.Printf("Error getting pod %s in namespace %s: %v\n",
-		// 		pod, namespace, statusError.ErrStatus.Message)
-		// } else if err != nil {
-		// 	panic(err.Error())
-		// } else {
-		// 	fmt.Printf("Found pod %s in namespace %s\n", pod, namespace)
-		// }
-
-		fmt.Println("---------------------- [cluster] sleep ----------------------")
+		logger.Info("---------------------- [cluster] sleep ----------------------")
 		time.Sleep(time.Second * 2)
 	}
 }
